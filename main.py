@@ -2,6 +2,7 @@ from ckanapi import RemoteCKAN
 import csv
 import pandas as pd
 import os
+from datetime import datetime
 
 rc = RemoteCKAN("https://open.canada.ca/data/en/")
 
@@ -19,9 +20,8 @@ result_recycling = rc.action.datastore_search(
     q="recycling"
 )
 
-# joining both query results into a single list
+# Joining both query results into a single list
 results = result_waste["records"] + result_recycling["records"]
-
 
 # Define the filename for the CSV file
 filename = "output.csv"
@@ -43,6 +43,11 @@ filtered_filename = 'final_output.csv'
 
 # Read the CSV file into a DataFrame
 df = pd.read_csv(filename)
+
+# Convert 'delivery_date' to datetime format and filter out rows with past dates
+df['delivery_date'] = pd.to_datetime(df['delivery_date'], format='%Y-%m-%d', errors='coerce')
+current_date = datetime.now()
+df = df[df['delivery_date'] >= current_date]
 
 # Filter the DataFrame: keep only rows where 'contract_value' > 100,000
 filtered_df = df[df['contract_value'] > 100000]
