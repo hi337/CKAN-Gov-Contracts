@@ -52,11 +52,23 @@ df = df[df['delivery_date'] >= current_date]
 # Filter the DataFrame: keep only rows where 'contract_value' > 100,000
 filtered_df = df[df['contract_value'] > 100000]
 
-# Write the filtered DataFrame to a new CSV file
-filtered_df.to_csv(filtered_filename, index=False)
+# Convert DataFrame to a 2D Python list (including headers)
+data_list = [filtered_df.columns.tolist()] + filtered_df.values.tolist()
+
+# Sort the list by 'delivery_date' (assuming the delivery_date column is the third column)
+# Find the index of 'delivery_date' column
+delivery_date_index = data_list[0].index('delivery_date')
+
+# Sort the data rows by the 'delivery_date' column
+data_list[1:] = sorted(data_list[1:], key=lambda x: x[delivery_date_index])
+
+# Write the sorted list back to a CSV file
+with open(filtered_filename, 'w', newline='', encoding="utf-8") as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerows(data_list)
 
 # Print the total number of rows in the filtered DataFrame
-total_rows = len(filtered_df)
+total_rows = len(data_list) - 1  # Subtract 1 for the header row
 print(f"Total number of entries: {total_rows}")
 
 # Remove the now useless input file
