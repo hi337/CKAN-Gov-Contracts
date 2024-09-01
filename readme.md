@@ -6,7 +6,9 @@
 pip install ckanapi
 ```
 
-2. Run main.py
+2. Change email sender and recipient in script
+
+3. Run main.py
 
 ```command
 python main.py

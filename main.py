@@ -2,75 +2,91 @@ from ckanapi import RemoteCKAN
 import csv
 import pandas as pd
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
+# Step 1: Connect to the remote CKAN instance
 rc = RemoteCKAN("https://open.canada.ca/data/en/")
 
-# Results for keyword "waste"
+# Step 2: Query for results with keywords "waste" and "recycling"
 result_waste = rc.action.datastore_search(
     resource_id="fac950c0-00d5-4ec1-a4d3-9cbebf98a305",
     limit=10000,
     q="waste"
 )
 
-# Results for keyword "recycling"
 result_recycling = rc.action.datastore_search(
     resource_id="fac950c0-00d5-4ec1-a4d3-9cbebf98a305",
     limit=10000,
     q="recycling"
 )
 
-# Joining both query results into a single list
+# Step 3: Combine the query results
 results = result_waste["records"] + result_recycling["records"]
 
-# Define the filename for the CSV file
+# Step 4: Write results to a CSV file
 filename = "output.csv"
 
-# Open the file in write mode
 with open(filename, 'w', newline='', encoding="utf-8") as csvfile:
-    # Create a CSV DictWriter object
-    fieldnames = results[0].keys()  # Get the headers from the first dictionary
+    fieldnames = results[0].keys()
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-    
-    # Write the header
     writer.writeheader()
-    
-    # Write the data
     writer.writerows(results)
 
-# Define the input and output file names
+# Step 5: Load the CSV into a DataFrame and filter the data
 filtered_filename = 'final_output.csv'
-
-# Read the CSV file into a DataFrame
 df = pd.read_csv(filename)
 
-# Convert 'delivery_date' to datetime format and filter out rows with past dates
 df['delivery_date'] = pd.to_datetime(df['delivery_date'], format='%Y-%m-%d', errors='coerce')
 current_date = datetime.now()
 df = df[df['delivery_date'] >= current_date]
-
-# Filter the DataFrame: keep only rows where 'contract_value' > 100,000
 filtered_df = df[df['contract_value'] > 100000]
 
-# Convert DataFrame to a 2D Python list (including headers)
-data_list = [filtered_df.columns.tolist()] + filtered_df.values.tolist()
+# Step 6: Sort the DataFrame by 'delivery_date'
+filtered_df = filtered_df.sort_values(by='delivery_date')
 
-# Sort the list by 'delivery_date' (assuming the delivery_date column is the third column)
-# Find the index of 'delivery_date' column
-delivery_date_index = data_list[0].index('delivery_date')
+# Step 7: Write the filtered and sorted data back to a CSV file (final_output.csv)
+filtered_df.to_csv(filtered_filename, index=False)
 
-# Sort the data rows by the 'delivery_date' column
-data_list[1:] = sorted(data_list[1:], key=lambda x: x[delivery_date_index])
-
-# Write the sorted list back to a CSV file
-with open(filtered_filename, 'w', newline='', encoding="utf-8") as csvfile:
-    writer = csv.writer(csvfile)
-    writer.writerows(data_list)
-
-# Print the total number of rows in the filtered DataFrame
-total_rows = len(data_list) - 1  # Subtract 1 for the header row
+# Step 8: Print the total number of rows
+total_rows = len(filtered_df)
 print(f"Total number of entries: {total_rows}")
 
-# Remove the now useless input file
+# Step 9: Remove the temporary file (output.csv)
 if os.path.exists(filename):
     os.remove(filename)
+
+# Step 10: Calculate notification date and send email
+filtered_df['notification_date'] = filtered_df['delivery_date'] - timedelta(days=30)
+today = datetime.today().date()
+
+notify_df = filtered_df[filtered_df['notification_date'] == pd.Timestamp(today)]
+
+def send_email_notification(contracts):
+    sender = 'example@hotmail.com'
+    receiver = 'example@gmail.com'
+    subject = 'Canadian Government Contract Notification'
+    selected_columns = contracts[["_id", "reference_number", "description_en", "contract_value"]]
+    body = f"The following contracts are due for delivery in 30 days:\n\n{selected_columns.to_string(index=False)}"
+    
+    msg = MIMEText(body)
+    msg['Subject'] = subject
+    msg['From'] = sender
+    msg['To'] = receiver
+    
+    smtp_server = 'smtp-mail.outlook.com'
+    smtp_port = 587
+    smtp_user = 'example@hotmail.com'
+    smtp_password = 'examplepassword'
+    
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(sender, receiver, msg.as_string())
+
+if not notify_df.empty:
+    send_email_notification(notify_df)
